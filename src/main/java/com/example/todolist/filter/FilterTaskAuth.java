@@ -1,8 +1,11 @@
 package com.example.todolist.filter;
 
+import at.favre.lib.crypto.bcrypt.BCrypt;
+import com.example.todolist.repositories.IUserRepository;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -12,24 +15,49 @@ import java.util.Base64;
 @Component
 public class FilterTaskAuth extends OncePerRequestFilter  {
 
+    @Autowired
+    private IUserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        var authorization = request.getHeader("Authorization");
+        var servletPath = request.getServletPath();
 
-        var authEncoded = authorization.substring("Basic".length()).trim();
+        if (servletPath.equals("/tasks")) {
 
-        byte[] authDecode = Base64.getDecoder().decode(authEncoded);
+            var authorization = request.getHeader("Authorization");
 
-        var authString = new String(authDecode);
+            var authEncoded = authorization.substring("Basic".length()).trim();
 
-        String[] credentials = authString.split(":");
-        String username = credentials[0];
-        String password = credentials[1];
+            byte[] authDecode = Base64.getDecoder().decode(authEncoded);
 
-        System.out.println(username + " : " + password);
-        filterChain.doFilter(request, response);
+            var authString = new String(authDecode);
+
+            String[] credentials = authString.split(":");
+            String username = credentials[0];
+            String password = credentials[1];
+
+            System.out.println(username + " : " + password);
+
+            var user = this.userRepository.findByUsername(username);
+            if (user == null) {
+                response.sendError(401, "Usuário não autorizado");
+            } else {
+                var passwordVerify = BCrypt.verifyer().verify(password.toCharArray(), user.getPassword());
+                if (passwordVerify.verified) {
+                    request.setAttribute("idUser", user.getId());
+                    filterChain.doFilter(request, response);
+                } else {
+                    response.sendError(401, "Usuário não autorizado");
+                }
+
+
+            }
+        } else {
+            filterChain.doFilter(request, response);
+        }
+
+
     }
 }
